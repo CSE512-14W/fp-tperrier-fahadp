@@ -252,9 +252,14 @@ DE = DataExplore = function() {
 	
 	pub.stack_click = function(data,i){
 		console.log('Click: ',data,i);
-		orgRoot = getOrgChildren(data.id);
+		var parent_part = orgData[i].data[brush_pos];
+		orgData = getOrgChildren(data.id);
+		var children_part = d3.sum(orgData,getPE());
+		var parent_max = G.dims.chart.y.domain()[1];
+		var children_max = parent_max*children_part/parent_part;
+		console.log(parent_part,parent_max,children_part,children_max);
 		//G.dims.chart.y.domain([0,d3.max(data)]);
-		DE.make_stacked_chart(i);
+		//DE.make_stacked_chart(i);
 		//DE.unstack();
 		//change y domain
 		
