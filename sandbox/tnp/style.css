@@ -29,6 +29,10 @@ body {
 	cursor:pointer;
 }
 
+.bar-lable {
+
+}
+
 .axis path,.axis line {
 	fill: none;
 	stroke: #000;
