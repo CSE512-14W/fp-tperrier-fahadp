@@ -64,3 +64,54 @@ var OrderedHash = function() {
 	return pub;
 }
 
+/*****************************
+Bread Crumbs Class
+*******************************/
+var BreadCrumbs = function(selector,init){
+	
+	this.crumbs = []
+	if(init && init.constructor == Object){
+		this.crumbs.push(init);
+	}else if (init && init.constructor == Array){
+		console.log('Array');
+		this.crumbs = init;
+	}
+	
+	this.length = this.crumbs.length;
+	
+	this.$ele = $('ol');
+	if( selector && selector.constructor == jQuery){
+		this.$ele = selector;
+	}else if(selector && selector.constructor == String){
+		this.$ele = $(selector);
+	}
+}
+
+$.extend(BreadCrumbs.prototype,{
+	toHTML:function(){
+		var arr = []
+		this.crumbs.forEach(function(c,i,a){
+			var $inner = $('<span>').html(c.name);
+			if(i+1==a.length && i != 0){
+				$inner = $('<a>').attr('href',c.link).html(c.name)
+			}
+			arr.push($('<li>').append($inner));
+		});
+		arr.unshift($('<li id="play">Play</li>').click(DE.play));
+		
+		return arr;
+	},
+	refresh:function(){
+		this.$ele.empty().append(this.toHTML());
+	},
+	push:function(name,link) {
+		this.length++;
+		this.crumbs.push({name:name,link:link});
+	},
+	pop:function(){
+		this.length--;
+		return this.crumbs.pop();
+	}
+});
+
+

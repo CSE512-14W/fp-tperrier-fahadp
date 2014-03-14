@@ -3,6 +3,9 @@ Initialization: Run on DOM Load
 */
 $(document).ready(function() {
 	
+	G.crumbs = new BreadCrumbs('.breadcrumb',{name:'Sierra Leone',link:'#'});
+	G.crumbs.refresh();
+	
 	//ajax load of json file
 	$.when(
 		$.ajax({dataType: 'json', url: '../../fixtures/dhis-data.json',}),
@@ -10,6 +13,9 @@ $(document).ready(function() {
 	).done(function(dhis,penta){
 		console.log("Load Complete");
 		DE.json_load(dhis[0],penta[0]);
+		routie({
+			':nodeID?':DE.graph_node,
+		});
 	}).fail(function(){console.log('Json Load: Something Went Wrong')});
 });
 
@@ -118,7 +124,8 @@ DE = DataExplore = function() {
 	}
 	
 	//private vars
-	var DHIS,rawData,orgData,brush_pos,colors = d3.scale.category20();
+	var DHIS,rawData,orgData,brush_pos,
+	colors = ["#ddc","#cdd","#cdc","#dcd","#ccd","#dcc","#ccb","#bcc","#cbc","#bbc","#bcb","#cbb","#dee","#ede","#eed","#edd","dde","#ded"];
 	
 	/********
 	Public functions
@@ -128,8 +135,6 @@ DE = DataExplore = function() {
 	pub.json_load = function(dhis,analytics){
 		console.log('JSON Load: ',dhis,analytics);
 		DHIS = G.dhis = dhis, rawData = G.data = processRaw(analytics);
-		orgData = G.orgData = getOrgChildren(DHIS.orgRoot);
-		orgData = G.orgData = getOrgChildren('jmIPBj66vD6');
 		
 		G.chartEle = d3.select("#bar-chart-ele")
 		.attr({
@@ -150,12 +155,35 @@ DE = DataExplore = function() {
 				transform:'translate('+G.dims.chart.left+','+G.dims.chart.top+')',
 				class:'stack',
 			});
-			
-		pub.make_bar_chart();
-		pub.drill_up();
 	}
 	
-	pub.make_bar_chart = function(){
+	pub.graph_node = function(nodeId){
+		console.log("Graph: ",nodeId);
+		if(!orgData){
+			document.location.hash = '';
+			pub.make_bar_chart();
+			return;
+		}else if (!(nodeId in DHIS.organisationUnits)){
+			console.log('Bad Organisation Unint Id');
+			return;
+		}
+		
+		var children = getOrgChildren(nodeId);
+		if (function(){
+			for(var i=0; i<children.length; i++){
+				if (children[i].id = orgData[0].parent)
+					return true;
+			}
+			return false;
+		}()){
+			pub.drill_up();
+		}
+		
+	}
+	
+	pub.make_bar_chart = function(nodeId){
+		nodeId = nodeId || DHIS.orgRoot;
+		orgData = G.orgData = getOrgChildren(nodeId);
 		var dims = G.dims.chart
 		brush_pos = '201301';
 		//set dimensions that require data
@@ -173,7 +201,7 @@ DE = DataExplore = function() {
 				height:getPE(function(d){return dims.height-dims.y(d)}),
 				y:getPE(function(d){return dims.y(d)}),
 				class:'bar',
-				fill:function(d,i){return colors(i)},
+				fill:function(d,i){return colors[i%17]},
 				}).on('click',DE.drill_down);
 		bars.append('g')
 			.attr({
@@ -264,12 +292,19 @@ DE = DataExplore = function() {
 				y:getPE(function(d){return dims.y(d)}),
 			});
 			
+		G.chart.selectAll('.bar-label-ele').data(orgData).transition().duration(1000)
+			.attr({
+				transform:getPE(function(d){return 'translate(5,'+(dims.y(d)+5)+')'}),
+			});
+			
 		
 		G.chartEle.select('.y.axis').transition().duration(1000).call(G.axis.chart.y);
 	}
 	
 	pub.drill_down = function(data,i){
 		console.log('Click: ',data,i);
+		G.crumbs.push(data.name,'#'+data.id);
+		G.crumbs.refresh();
 		
 		//get proportions for height
 		var parent_part = orgData[i].data[brush_pos];
@@ -305,7 +340,7 @@ DE = DataExplore = function() {
 				height:getPE(function(d,i){return G.dims.chart.height-G.dims.chart.y(d)}),
 				y:getPE(function(d){var o = stack; stack += d; return G.dims.chart.y(d+o)}),
 				class:'bar',
-				fill:getPE(function(d,i){return colors(i)})
+				fill:getPE(function(d,i){return colors[i%17]})
 			});
 	}
 	
@@ -338,7 +373,12 @@ DE = DataExplore = function() {
 		delay = delay || 1000
 		console.log(delay);
 		var oldStack = G.stacked.attr('class','chart');
-		oldStack.selectAll('rect').on('click',DE.drill_down);;
+		
+		var children = getOrgChildren(orgData[0].id);
+		console.log(children);
+		if(children){
+			oldStack.selectAll('rect').on('click',DE.drill_down);
+		}
 		
 		G.stacked = G.chart.attr('class','stack');
 		G.stacked.selectAll('*').remove();
@@ -363,6 +403,10 @@ DE = DataExplore = function() {
 	
 	pub.drill_up = function(){
 		console.log(orgData[0]);
+		
+		G.crumbs.pop();
+		G.crumbs.refresh();
+		
 		var parent = DHIS.organisationUnits[orgData[0].parent];
 		var parentOrgData = getOrgChildren(parent.parent);
 		var idx = 0;
@@ -383,7 +427,7 @@ DE = DataExplore = function() {
 		
 		//set new domain
 		G.dims.chart.y.domain([0,children_max]);
-		G.dims.chart.y.barWidth = G.dims.chart.y.width/parentOrgData.length;
+		G.dims.chart.barWidth = G.dims.chart.width/parentOrgData.length;
 		var stack = 0;
 	
 		//add stack
@@ -407,7 +451,7 @@ DE = DataExplore = function() {
 			});
 		var rect = bars.append('rect').attr({
 			width:G.dims.chart.barWidth-1,
-			fill:getPE(function(d,i){return colors(i)}),
+			fill:getPE(function(d,i){return colors[i%17]}),
 			height:0,
 			y:G.dims.chart.y(0),
 			class:'bar',
@@ -432,7 +476,7 @@ DE = DataExplore = function() {
 		moveSlider(brush_pos);
 		
 		if(idx<=orgData.length){
-			window.setTimeout(DE.play,2000);
+			G.play = window.setTimeout(DE.play,2000);
 		}
 	}
 	
