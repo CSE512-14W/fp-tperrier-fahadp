@@ -114,4 +114,18 @@ $.extend(BreadCrumbs.prototype,{
 	}
 });
 
+/*****************************
+Extend Array Prototype 
+*******************************/
+if(!('findIndex' in Array.prototype)){
+	Array.prototype.findIndex = function(callBack,thisArg){
+		for(var i = 0; i<this.length; i++){
+			if(callBack.call(thisArg,this[i],i,this))
+				return i;
+		}
+		return -1;
+	}
+
+}
+
 
