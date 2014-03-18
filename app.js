@@ -8,8 +8,8 @@ $(document).ready(function() {
 	
 	//ajax load of json file
 	$.when(
-		$.ajax({dataType: 'json', url: '../../fixtures/dhis-data.json',}),
-		$.ajax({dataType: 'json', url: '../../fixtures/data-penta.json',})
+		$.ajax({dataType: 'json', url: 'fixtures/dhis-data.json',}),
+		$.ajax({dataType: 'json', url: 'fixtures/data-penta.json',})
 	).done(function(dhis,penta){
 		console.log("Load Complete");
 		DE.json_load(dhis[0],penta[0]);
@@ -121,17 +121,11 @@ if(!('findIndex' in Array.prototype)){
 }
 
 
-
 /*
 Globals Object
 */
 var G = {}
 
-
-/* Slider axis 
-G.axis.chart.x = d3.svg.axis().scale(G.dims.chart.x)
-	.tickSize(20,0).tickPadding(5).orient('bottom');
-*/
 
 /*
 Data Explore: DE
@@ -241,10 +235,10 @@ Public functions
 	}
 	
 	pub.drill_down = function(nodeId){
-		console.log('Drill Down: ',doingClick);
+		console.log('Drill Down: ',nodeId,doingClick);
 		pub.pause();
 		if(!doingClick){
-			doingClick=window.setTimeout(function(){doingClick=false},1500);;
+			doingClick=window.setTimeout(function(){doingClick=false},1500);
 			pub.OrgBarChart.drill_down(nodeId);
 			pub.Map.drillDown(nodeId);
 			pub.Map.hideNodeText(nodeId);
@@ -254,11 +248,14 @@ Public functions
 	}
 	
 	pub.drill_up = function(nodeId) {
-		console.log('Drill Up: ',nodeId);
-		pub.OrgBarChart.drill_up();
-		pub.Map.drill_up();
-		crumbs.pop();
-		crumbs.refresh();
+		console.log('Drill Up: ',nodeId,doingClick);
+		if(!doingClick){	
+			doingClick=window.setTimeout(function(){doingClick=false},1500);
+			pub.OrgBarChart.drill_up();
+			pub.Map.drill_up();
+			crumbs.pop();
+			crumbs.refresh();
+		}
 	}
 	
 	pub.mouseOver = function(nodeId){
@@ -289,7 +286,7 @@ Public functions
 		pub.Slider.move();
 		
 		if(idx<=_orgData.length){
-			playing = G.play = window.setTimeout(DE.play,2000);
+			playing = G.play = window.setTimeout(DE.play,1500);
 		}
 		else{
 			pub.pause();
@@ -604,17 +601,16 @@ Name space for OrgBarChart Functions
 			var stack = 0;
 		
 			//add stack
-			CHART.selectAll('g').data(_orgData).transition().duration(1000).ease(type)
+			console.log(_orgData);
+			CHART.selectAll('g').transition().duration(600).ease(type)
 				.attr({
 					transform:'translate('+idx*dims.barWidth + ',0)',
-				}).selectAll('rect')
+				}).selectAll('rect.bar')
 				.attr({
 					width:dims.barWidth-1,
 					height:getPE(function(d,i){return dims.height-dims.y(d)}),
-					y:getPE(function(d){stack += d; return dims.y(stack)}),
-					class:'bar',
-				})
-				
+					y:getPE(function(d,i){console.log(stack,d,i);stack += d; return dims.y(stack)}),
+				});
 				
 			//grow new bars over stack
 			dims.y.domain([0,parent_max]);
@@ -627,14 +623,31 @@ Name space for OrgBarChart Functions
 				fill:getPE(function(d,i){return COLORS(i)}),
 				height:0,
 				y:dims.y(0),
+				id:function(d,i){return d.id},
 				class:'bar',
 			})
 			.on({
-				click:function(d,i){DE.drill_down.call(window,d.id)},
 				mouseover:function(d,i){DE.mouseOver.call(window,d.id)},
 				mouseout:function(d,i){DE.mouseOut.call(window,d.id)},
-			});;
-			rect.transition().delay(1000).duration(1000).ease(type)
+				click:function(d,i){DE.drill_down.call(window,d.id)},
+			});
+			
+			//quarter height background click
+			bars.append('rect')
+				.attr({
+					width:dims.barWidth-4,
+					height:dims.height/4,
+					class:'hover-bar',
+					y:dims.height*3/4,
+					opacity:0,
+				})
+				.on({
+					mouseover:function(d,i){DE.mouseOver.call(window,d.id)},
+					mouseout:function(d,i){DE.mouseOut.call(window,d.id)},
+					click:function(d,i){DE.drill_down.call(window,d.id)},
+				});
+			
+			rect.transition().delay(400).duration(600).ease(type)
 				.attr({
 					height:getPE(function(d){return dims.height-dims.y(d)}),
 					y:getPE(function(d){return dims.y(d)}),
@@ -656,7 +669,7 @@ Name space for OrgBarChart Functions
 				.selectAll('line,text').attr('opacity',1);
 			
 			
-			switch_stack(2000);
+			switch_stack(1000);
 		
 		}
 		
@@ -925,6 +938,7 @@ Name space for Slider Functions
 					if(new_pos != _curPeriod){
 						_curPeriod = new_pos;
 						DE.change_bar_chart();
+						DE.pause();
 						d3.select(this).select('circle')
 							.attr({
 								cx:value,

@@ -20,14 +20,18 @@ body {
 	position:relative;
 	width:1280px;
 	background-color:#fff;
-	margin:0 auto;
-	border:solid 1px black;
+	margin:15px auto;
 }
 
 #wrapper h1#app-title {
 	margin:10px 0px;
 	text-align:center;
 	position:relative;
+	font-weight:bold;
+}
+
+#wrapper h1#app-title span {
+	color:#1d5288;
 }
 
 
@@ -80,10 +84,19 @@ rect.highlighted {
 	position:absolute;
 	width:302px;
 	top:450px;
-	right:18px;
+	right:20px;
 	border:1px solid black;
 	border-radius:0px;
 	border-top:none;
+}
+
+#help-text {
+	position: absolute;
+	border:1px solid black;
+	width:302px;
+	right:20px;
+	top:500px;
+	padding:10px;
 }
 
 
@@ -128,6 +141,7 @@ rect.highlighted {
 
 #play-button:hover {
 	font-size:56px;
+	border-width:5px;
 }
 
 #play-button:hover i{
