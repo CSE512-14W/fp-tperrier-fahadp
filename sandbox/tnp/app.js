@@ -19,6 +19,109 @@ $(document).ready(function() {
 	}).fail(function(){console.log('Json Load: Something Went Wrong')});
 });
 
+
+/*************************************
+Global Helper Functions and Name Space
+**************************************/
+
+
+/*************
+Dimensions: object to hold dimensions
+*************/
+var Dimension = function(prop){
+	prop = prop || {}
+	var defaults = {
+		top:10,
+		right:10,
+		bottom:10,
+		left:10,
+		width:1000,
+		height:500
+	}
+	$.extend(true,defaults,prop);
+	$.extend(this,defaults);
+	this.width = this.width-this.left-this.right;
+	this.height = this.height-this.top-this.bottom;
+}
+
+$.extend(Dimension.prototype,{
+	total_width:function(){
+		return this.width+this.left+this.right;
+	},
+	total_height:function(){
+		return this.height+this.top+this.bottom;
+	}
+});
+
+
+/*****************************
+Bread Crumbs Class
+*******************************/
+var BreadCrumbs = function(selector,init){
+	
+	this.crumbs = []
+	if(init && init.constructor == Object){
+		this.crumbs.push(init);
+	}else if (init && init.constructor == Array){
+		console.log('Array');
+		this.crumbs = init;
+	}
+	
+	this.length = this.crumbs.length;
+	
+	this.$ele = $('ol');
+	if( selector && selector.constructor == jQuery){
+		this.$ele = selector;
+	}else if(selector && selector.constructor == String){
+		this.$ele = $(selector);
+	}
+}
+
+$.extend(BreadCrumbs.prototype,{
+	toHTML:function(){
+		var arr = []
+		this.crumbs.forEach(function(c,i,a){
+			var $inner = $('<span>').html(c.name);
+			if(i+1==a.length && i != 0){
+				$inner = $('<a>').attr('href','#').html(c.name).click(function(){
+					console.log(c);
+					DE.drill_up(c.link);
+				});
+			}
+			arr.push($('<li>').append($inner));
+		});
+		
+		return arr;
+	},
+	refresh:function(){
+		this.$ele.empty().append(this.toHTML());
+	},
+	push:function(name,link) {
+		this.length++;
+		this.crumbs.push({name:name,link:link});
+	},
+	pop:function(){
+		this.length--;
+		return this.crumbs.pop();
+	}
+});
+
+/*****************************
+Extend Array Prototype 
+*******************************/
+if(!('findIndex' in Array.prototype)){
+	Array.prototype.findIndex = function(callBack,thisArg){
+		for(var i = 0; i<this.length; i++){
+			if(callBack.call(thisArg,this[i],i,this))
+				return i;
+		}
+		return -1;
+	}
+
+}
+
+
+
 /*
 Globals Object
 */
@@ -115,7 +218,7 @@ DE = DataExplore = function() {
 	}
 	
 	//private vars
-	var DHIS,rawData,_orgData,_curPeriod,_curOrg,
+	var DHIS,rawData,_orgData,_curPeriod,_curOrg,doingClick,playing,crumbs,
 	COLORS = d3.scale.ordinal()
 		.range(["#ddc","#cdd","#cdc","#dcd","#ccd","#dcc","#ccb","#bcc","#cbc","#bbc","#bcb","#cbb","#dee","#ede","#eed","#edd","#dde","#ded"]);
 	
@@ -129,16 +232,33 @@ Public functions
 		
 		DHIS = G.dhis = dhis, rawData = G.data = processRaw(analytics);
 		
+		crumbs = new BreadCrumbs('#breadcrumb',{name:'Sierra Leone',link:rawData.orgRoot});
+		crumbs.refresh();
+		
 		pub.OrgBarChart.make();
 		pub.Map.make();
 		pub.Slider.make();
 	}
 	
 	pub.drill_down = function(nodeId){
-		
-		pub.OrgBarChart.drill_down(nodeId);
-		pub.Map.drillDown(nodeId);
-		pub.Map.hideNodeText(nodeId);
+		console.log('Drill Down: ',doingClick);
+		pub.pause();
+		if(!doingClick){
+			doingClick=window.setTimeout(function(){doingClick=false},1500);;
+			pub.OrgBarChart.drill_down(nodeId);
+			pub.Map.drillDown(nodeId);
+			pub.Map.hideNodeText(nodeId);
+			crumbs.push(DHIS.organisationUnits[nodeId].name,nodeId);
+			crumbs.refresh();
+		}
+	}
+	
+	pub.drill_up = function(nodeId) {
+		console.log('Drill Up: ',nodeId);
+		pub.OrgBarChart.drill_up();
+		pub.Map.drill_up();
+		crumbs.pop();
+		crumbs.refresh();
 	}
 	
 	pub.mouseOver = function(nodeId){
@@ -151,18 +271,36 @@ Public functions
 		pub.OrgBarChart.unhighlightBar(nodeId);
 	}
 	
+	pub.play_pause = function(){
+		if(!playing){
+			$('#play-icon').removeClass('fa-play').addClass('fa-pause');
+			pub.play();
+		}else{
+			pub.pause();
+		}
+	}
 	
 	pub.play = function(){
 		console.log('Play: ',_curPeriod);
 		var sd = sliderDomain();
 		var idx = sd.indexOf(_curPeriod);
-		console.log('Play: ',_curPeriod,idx);
 		_curPeriod = sd[++idx];
-		pub.change_bar_chart(_curPeriod);
-		moveSlider(_curPeriod);
+		pub.change_bar_chart();
+		pub.Slider.move();
 		
-		if(idx<=orgData.length){
-			G.play = window.setTimeout(DE.play,2000);
+		if(idx<=_orgData.length){
+			playing = G.play = window.setTimeout(DE.play,2000);
+		}
+		else{
+			pub.pause();
+		}
+	}
+	
+	pub.pause = function() {
+		if(playing){
+			window.clearTimeout(playing);
+			$('#play-icon').removeClass('fa-pause').addClass('fa-play');
+			playing = G.play = false;
 		}
 	}
 	
@@ -182,6 +320,19 @@ Name space for OrgBarChart Functions
 
 		axis.y = d3.svg.axis().scale(dims.y).orient('left');
 		axis.x = d3.svg.axis().scale(dims.x).orient('bottom');
+		
+		
+		var maxValueForLevel = function(){
+			var keys = sliderDomain(), max = 0;
+			_orgData.forEach(function(data,i){
+				keys.forEach(function(key,j){
+					if(data.data[key] > max){
+						max = data.data[key];
+					}
+				});
+			});
+			return max;
+		}
 		
 		
 		/************************************
@@ -252,13 +403,29 @@ Name space for OrgBarChart Functions
 				
 			//set dimensions that require data
 			dims.barWidth = dims.width/_orgData.length;
-			dims.y.domain([0,d3.max(_orgData,getPE())]);
+			dims.y.domain([0,maxValueForLevel()]);
 			dims.x.domain(orgNames());
 			
 			var bars = CHART.selectAll('g').data(_orgData).enter().append('g')
 			.attr({ 
 				transform:getPE(function(d,i){return 'translate('+i*dims.barWidth + ',0)';})
 				})
+			
+			//quarter height background click
+			bars.append('rect')
+				.attr({
+					width:dims.barWidth-4,
+					height:dims.height/4,
+					class:'hover-bar',
+					y:dims.height*3/4,
+					opacity:0,
+				})
+				.on({
+					click:function(d,i){DE.drill_down.call(window,d.id)},
+					mouseover:function(d,i){DE.mouseOver.call(window,d.id)},
+					mouseout:function(d,i){DE.mouseOut.call(window,d.id)},
+				});
+			
 			bars.append('rect')
 				.attr({
 					width:dims.barWidth-4,
@@ -341,12 +508,6 @@ Name space for OrgBarChart Functions
 					mouseout:function(d,i){DE.mouseOut.call(window,d.id)},
 				});
 				
-			var children = DHIS.organisationUnits[_orgData[0].id].children;
-			if(children){ //only add click listener if there are children
-				STACK.selectAll('rect').on({
-					click:function(d,i){DE.drill_down.call(window,d.id)},
-				});
-			}
 				
 			//Set  new axis vars for child bar chart
 			dims.y.domain([0,d3.max(_orgData,getPE())]);
@@ -375,6 +536,28 @@ Name space for OrgBarChart Functions
 				y:getPE(function(d){return dims.y(d)})
 			});
 			
+			//quarter height background click
+			STACK.selectAll('g').append('rect')
+				.attr({
+					width:dims.barWidth-4,
+					height:dims.height/4,
+					class:'hover-bar',
+					y:dims.height*3/4,
+					opacity:0,
+				})
+				.on({
+					mouseover:function(d,i){DE.mouseOver.call(window,d.id)},
+					mouseout:function(d,i){DE.mouseOut.call(window,d.id)},
+				});
+			
+			
+			var children = DHIS.organisationUnits[_orgData[0].id].children;
+			if(children){ //only add click listener if there are children
+				STACK.selectAll('rect').on({
+					click:function(d,i){DE.drill_down.call(window,d.id)},
+				});
+			}
+			
 			
 			SVG.select('.y.axis').transition().duration(dur).ease(type)
 				.call(axis.y);
@@ -392,13 +575,12 @@ Name space for OrgBarChart Functions
 		}
 		
 		
-		pub.drill_up = function(){
-			console.log(orgData[0]);
+		bar_pub.drill_up = function(){
+			var type = 'sin';
+			//move stack to the front
+			$('.stack').insertAfter($('.chart'));
 			
-			G.crumbs.pop();
-			//G.crumbs.refresh();
-			
-			var parent = DHIS.organisationUnits[orgData[0].parent];
+			var parent = DHIS.organisationUnits[_orgData[0].parent];
 			var parentOrgData = getOrgChildren(parent.parent);
 			var idx = 0;
 			parentOrgData.forEach(function(d,i){
@@ -411,7 +593,7 @@ Name space for OrgBarChart Functions
 			
 			//get proportions for height
 			var parent_part = parentOrgData[idx].data[_curPeriod];
-			var children_total = d3.sum(orgData,getPE());
+			var children_total = d3.sum(_orgData,getPE());
 			var parent_max = d3.max(parentOrgData,getPE());
 			var children_max = parent_max*children_total/parent_part;
 			console.log(parent_part,parent_max,children_total,children_max);
@@ -422,21 +604,21 @@ Name space for OrgBarChart Functions
 			var stack = 0;
 		
 			//add stack
-			G.chart.selectAll('g.bar-label-ele').remove();
-			G.chart.selectAll('g').data(orgData).transition().duration(1000)
+			CHART.selectAll('g').data(_orgData).transition().duration(1000).ease(type)
 				.attr({
 					transform:'translate('+idx*dims.barWidth + ',0)',
 				}).selectAll('rect')
 				.attr({
 					width:dims.barWidth-1,
 					height:getPE(function(d,i){return dims.height-dims.y(d)}),
-					y:getPE(function(d){var o = stack; stack += d; return dims.y(d+o)}),
+					y:getPE(function(d){stack += d; return dims.y(stack)}),
 					class:'bar',
-				});
+				})
 				
-			//fade in new bars and out old bars
+				
+			//grow new bars over stack
 			dims.y.domain([0,parent_max]);
-			var bars = G.stacked.selectAll('g').data(parentOrgData).enter().append('g')
+			var bars = STACK.selectAll('g').data(parentOrgData).enter().append('g')
 				.attr({
 					transform:getPE(function(d,i){return 'translate('+i*dims.barWidth + ',0)'}),
 				});
@@ -446,15 +628,35 @@ Name space for OrgBarChart Functions
 				height:0,
 				y:dims.y(0),
 				class:'bar',
-			});
-			rect.transition().delay(1000).duration(1000)
+			})
+			.on({
+				click:function(d,i){DE.drill_down.call(window,d.id)},
+				mouseover:function(d,i){DE.mouseOver.call(window,d.id)},
+				mouseout:function(d,i){DE.mouseOut.call(window,d.id)},
+			});;
+			rect.transition().delay(1000).duration(1000).ease(type)
 				.attr({
 					height:getPE(function(d){return dims.height-dims.y(d)}),
 					y:getPE(function(d){return dims.y(d)}),
 				});
 				
-			orgData = parentOrgData;
-			window.setTimeout(DE.switch_stack.bind(null,1),2000);
+			_orgData = parentOrgData;
+			dims.x.domain(orgNames());
+			
+			SVG.select('.y.axis').transition().duration(1000).ease(type)
+				.call(axis.y);
+			
+			//Fade out old x axis labels
+			SVG.selectAll('.x.axis text, .x.axis line').transition().duration(500).ease(type)
+			.attr('opacity',0);
+			
+			//fade in new 
+			SVG.selectAll('.x.axis').transition().delay(500).call(x_axis,0)
+				.transition().duration(500).ease(type)
+				.selectAll('line,text').attr('opacity',1);
+			
+			
+			switch_stack(2000);
 		
 		}
 		
@@ -506,6 +708,8 @@ Name space for Map Functions
 		var drawMap = function(geo,dur){
 			dur = (dur==undefined)?1000:dur;
 			console.log('Draw: ',dur);
+			
+			//add geo locations
 			svg.selectAll().data(geo.features).enter().append("path")
 				.attr({
 					fill:function(d,i){ return COLORS(i)},
@@ -518,11 +722,12 @@ Name space for Map Functions
 					click:function(d){DE.drill_down.call(window,d.properties.id)},
 					})
 				.transition().duration(dur).style('opacity', 1);
-				
+			
+			//add label text
 			svg.selectAll().data(geo.features).enter().append("text")
 				.attr({
 					class:function(d) { 
-						out = 'subunit-label';
+						out = 'subunit-label ';
 						out += d.properties.parentId+" "+d.properties.id;
 						out += " level"+d.properties.level;
 						return out},
@@ -540,22 +745,18 @@ Name space for Map Functions
 		}
 		
 		map_pub.drillDown = function(orgUnitID){
-			map_click(svg.select("."+orgUnitID+".level"+curLevel).datum());
-		}
+			var d = svg.select("."+orgUnitID+".level"+curLevel).datum();
 		
-		var doingClick=null;
-		var map_click = function(d){
-			if(!doingClick){
-				var pathc=[(map_width/2)-path.centroid(d)[0]*2,(map_height/2)-path.centroid(d)[1]*2];
-				prvTranslation=pathc;
-				svg.selectAll("path").transition().duration(500).style('opacity', 0.2)
-					.attr("transform", "translate("+pathc+") scale(2)");
-				svg.selectAll("text").each(function(d){
-					var txy=[d.properties.label_coord[0]*2+pathc[0],d.properties.label_coord[1]*2+pathc[1]];
-					d3.select(this).transition().duration(500).attr("transform","translate("+txy[0]+","+txy[1]+")");
-				});
-				doingClick=setTimeout(function(){drillDownMap(d.properties.id,d);},500);
-			}
+			var pathc=[(map_width/2)-path.centroid(d)[0]*2,(map_height/2)-path.centroid(d)[1]*2];
+			prvTranslation=pathc;
+			svg.selectAll("path").transition().duration(500).style('opacity', 0.2)
+				.attr("transform", "translate("+pathc+") scale(2)");
+			svg.selectAll("text").each(function(d){
+				var txy=[d.properties.label_coord[0]*2+pathc[0],d.properties.label_coord[1]*2+pathc[1]];
+				d3.select(this).transition().duration(500).attr("transform","translate("+txy[0]+","+txy[1]+")");
+			});
+			setTimeout(function(){drillDownMap(d.properties.id,d);},500);
+			
 		};
 		
 		drillDownMap = function(orgUnitID,d){
@@ -585,7 +786,7 @@ Name space for Map Functions
 			
 		}
 		
-		map_pub.floatUp = function(){
+		map_pub.drill_up = function(){
 			rmId=currentOrgUnitID;
 			rmLevel=curLevel;
 			curLevel=curLevel-1;
@@ -627,8 +828,8 @@ Name space for Map Functions
 		}
 		
 		var removeAreas = function(parentId,level){
-			svg.selectAll("."+parentId+".level"+level).data([]).exit().remove();
-			doingClick=null;
+			console.log('Remove Areas: ',parentId,level);
+			svg.selectAll("."+parentId+".level"+level).remove();
 		}
 
 		map_pub.showNodeText = function(nodeId){
@@ -673,6 +874,13 @@ Name space for Map Functions
 		
 		return map_pub;
 	}();
+	
+var sliderDomain = function(data){
+		data = data || _orgData;
+		var keys = [];
+		for(k in data[0].data){keys.push(k)}
+		return keys;
+	}
 
 /*************************************
 Name space for Slider Functions
@@ -681,17 +889,8 @@ Name space for Slider Functions
 		
 		var width = 1000, height=50;	
 		var x = d3.scale.ordinal().rangeRoundBands([0,width]);
-		var axis = d3.svg.axis().scale(x)
-		.orient('bottom').tickSize(20,0).tickPadding(5).orient('bottom');
+		var axis = d3.svg.axis().scale(x).orient('bottom').tickSize(20,0).tickPadding(5);
 		
-		
-		var sliderDomain = function(data){
-				data = data || _orgData;
-				var keys = [];
-				for(k in data[0].data){keys.push(k)}
-				console.log(keys);
-				return keys;
-			}
 			
 		var moveSlider = function(period){
 			period = period || _curPeriod;
@@ -750,6 +949,7 @@ Name space for Slider Functions
 					class:'x axis',
 				})
 				.call(axis)
+				
 			.selectAll('.tick')
 				.attr({
 					transform:function(){
@@ -757,23 +957,34 @@ Name space for Slider Functions
 						return 'translate('+t.x+','+(t.y-10)+')';
 					}
 				});
+				
 			sliderEle.selectAll(".extent,.resize").remove();
 			sliderEle.select('.background')
 				.attr({
 					height:Math.ceil(sliderEle[0][0].getBBox().height),
 					transform:'translate(0,-10)',
 				});
+				
 			//Append Circle Handle
 			sliderEle.append('circle')
 				.attr({
 					class:'handle',
 					r:10,
-					fill:'red',
 					cx:bandWidth/2+5,
 				});
+				
+			//add listener to play element
+			$('#play-button').click(DE.play_pause);
 		
 		}
 		
+		slider_pub.move = function(period){
+			period = period || _curPeriod;
+				d3.select('#slider-ele .handle').transition().duration(400)
+				.attr({
+					cx:x(period)+ x.rangeBand()/2+5,
+				});
+		}
 		
 		return slider_pub;
 	}();
