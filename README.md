@@ -8,6 +8,7 @@ Fahad Pervaiz, Trevor Perrier (fahadp,tperrier)
 * [Paper](https://github.com/CSE512-14W/fp-tperrier-fahadp/raw/master/deliverables/fahadp-tperrier-paper.pdf)
 
 ##Abstract
+The collection of health system data is recognized as an important tool for international development.  With the collection of large amounts of data there exists a need to have better tools for exploring and analyzed this data.  In this class project we designed and built a plugin for the District Health and Information System v2 (DHIS2).  Our main goal was to create a simple interaction using familial visualization elements such as bar-charts and maps.  We wanted to make it easy for someone to explore data reports at multiple levels of the organizational hierarchy for the country.  The end goal of this project is a DHIS2 application that can be run in the cloud for any instance of DHIS2.
 
 ## Running Instructions
 
